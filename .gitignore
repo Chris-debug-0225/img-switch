@@ -1,0 +1,33 @@
+# 密钥与本机配置，绝不入库
+config.json
+config.json.tmp
+app-settings.json
+migration-backups/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# PyInstaller 构建产物
+build/
+dist/
+artifacts/
+*.spec
+
+# 运行产物
+generated/
+*.meta.json
+sanitized-delivery/
+
+# 系统和编辑器生成的本地文件
+.DS_Store
+._*

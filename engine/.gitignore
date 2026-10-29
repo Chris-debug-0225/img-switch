@@ -1,0 +1,11 @@
+# 本地配置含 API Key，禁止提交
+config.json
+config.json.tmp
+
+# 生成产物
+generated/
+*.png
+*.jpg
+
+__pycache__/
+*.pyc

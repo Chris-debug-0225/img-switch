@@ -1,0 +1,117 @@
+name: Build unsigned test installers
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test and build source archive
+        run: |
+          python -B packaging/source/test_build_source.py
+          mkdir -p artifacts/source
+          python -B packaging/source/build_source.py --output artifacts/source/img-switch-source.zip
+          cd artifacts/source
+          sha256sum img-switch-source.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: img-switch-source-test
+          path: artifacts/source/*
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          python -m pip install pyinstaller==6.16.0
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6'
+          if (!(Test-Path "$iscc\ISCC.exe")) { throw 'Inno Setup 6 is not installed on this runner' }
+          $iscc | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Run isolated tests
+        run: |
+          python -B app_tests.py
+          python -B engine/tests/run_tests.py
+          python -B test_packaged_runtime.py
+          python -B engine/tests/test_url_privacy.py
+          python -B packaging/windows/test_build_windows.py
+          python -B packaging/windows/test_audit_privacy.py
+      - name: Build test installer
+        run: python packaging/windows/build_windows.py --version 0.1.0 --output artifacts/windows
+      - name: Install, test and uninstall in an isolated environment
+        shell: pwsh
+        run: ./packaging/windows/smoke.ps1 -Installer artifacts/windows/IMG-Switch-0.1.0-Windows-x64-unsigned-setup.exe
+      - name: Record SHA-256
+        shell: pwsh
+        run: |
+          $file = Get-Item artifacts/windows/*.exe
+          $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
+          "$hash  $($file.Name)" | Set-Content -Encoding ascii artifacts/windows/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: img-switch-windows-x64-unsigned-test
+          path: artifacts/windows/*
+          if-no-files-found: error
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        run: python3 -m pip install pyinstaller==6.22.3 pycdlib==1.22.0
+      - name: Run isolated tests
+        run: |
+          python3 -B app_tests.py
+          python3 -B engine/tests/run_tests.py
+          python3 -B test_packaged_runtime.py
+          python3 -B engine/tests/test_url_privacy.py
+          python3 -B packaging/macos/test_stage.py
+          python3 -B packaging/macos/test_audit_privacy.py
+          python3 -B packaging/macos/test_make_dmg.py
+      - name: Build test disk image
+        run: PYTHON=python3 bash packaging/macos/build.sh artifacts/macos
+      - name: Test disk image and standalone engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          mountpoint="$RUNNER_TEMP/img-switch-test"
+          mkdir -p "$mountpoint"
+          hdiutil attach -readonly -nobrowse -quiet -mountpoint "$mountpoint" "artifacts/macos/IMG-Switch-macOS-${{ matrix.arch }}-unsigned.dmg"
+          trap 'hdiutil detach "$mountpoint" -quiet' EXIT
+          PYTHONDONTWRITEBYTECODE=1 python3 packaging/macos/smoke.py "$mountpoint/IMG Switch.app"
+          PYTHONDONTWRITEBYTECODE=1 python3 packaging/macos/audit_privacy.py "$mountpoint/IMG Switch.app"
+      - name: Record SHA-256
+        shell: bash
+        run: |
+          cd artifacts/macos
+          shasum -a 256 *.dmg > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: img-switch-macos-${{ matrix.arch }}-unsigned-test
+          path: artifacts/macos/*
+          if-no-files-found: error
