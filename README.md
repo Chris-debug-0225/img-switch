@@ -1,8 +1,49 @@
 # IMG Switch（img-switch）
 
-> 本机 Agent 的中转站生图总开关 —— 开启后，任何 Agent 在任何项目里都能对话生图；关掉，本机恢复原状。
+> 本机 Agent 的中转站生图总开关 —— 为支持的 Agent 按需接入生图，也可随时断开。
 
 IMG Switch 把一个 OpenAI 兼容的**中转站生图技能**按需安装进本机各 AI 编程 Agent（ZCode / Codex / Claude Code / Trae / CodeBuddy / MateClaw / Cursor / 跨工具 `.agents` 标准），并提供一个 ccswitch 风格的图形控制台管理一切。适合没有 GPT 套餐、但想在自己的工作流里稳定出图的用户。
+
+## 下载与安装
+
+当前提供 **v0.1.0-beta.5 测试版**。安装包已包含运行程序，**无需预装 Python**。
+
+| 系统 | 下载 |
+| --- | --- |
+| Windows x64 | [下载安装程序（.exe）](https://github.com/Chris-debug-0225/img-switch/releases/download/v0.1.0-beta.5/IMG-Switch-0.1.0-Windows-x64-unsigned-setup.exe) |
+| macOS Apple Silicon（M 系列） | [下载 Apple Silicon 安装包（.dmg）](https://github.com/Chris-debug-0225/img-switch/releases/download/v0.1.0-beta.5/IMG-Switch-macOS-arm64-unsigned.dmg) |
+| macOS Intel | [下载 Intel 安装包（.dmg）](https://github.com/Chris-debug-0225/img-switch/releases/download/v0.1.0-beta.5/IMG-Switch-macOS-x86_64-unsigned.dmg) |
+
+[全部版本与源码](https://github.com/Chris-debug-0225/img-switch/releases) · [SHA-256 校验文件](https://github.com/Chris-debug-0225/img-switch/releases/download/v0.1.0-beta.5/SHA256SUMS.txt)
+
+> **测试版提示：** 安装包尚未正式签名，macOS 版也未公证，系统可能显示安全提示或阻止打开。请只从本项目 Release 下载，并在确认来源和完整性后自行决定是否安装。
+
+### Windows 安装
+
+1. 下载上表中的 Windows 安装程序，双击运行并按提示完成安装。
+2. 从开始菜单打开 **IMG Switch**。安装默认只针对当前用户，并会创建开始菜单快捷方式。
+3. 按下方「首次使用」配置中转源并接入 Agent。
+
+卸载前，请先在应用的「Agent 接入」页关闭需要断开的开关，再通过 Windows 的应用设置卸载。卸载程序不会自动移除已接入的技能，配置也会保留。
+
+### macOS 安装
+
+1. 在苹果菜单  →「关于本机」查看芯片或处理器：Apple M 系列选择 **Apple Silicon**，Intel 处理器选择 **Intel**。不确定时可参考 [Apple 的说明](https://support.apple.com/zh-cn/116943)。
+2. 打开下载的 `.dmg`，将 **IMG Switch** 拖入 **Applications（应用程序）** 文件夹，然后从「应用程序」启动。
+3. 若 macOS 阻止打开，在确认文件可信且未被篡改后，可查看 [Apple 的安全打开说明](https://support.apple.com/zh-cn/102445)。
+4. 按下方「首次使用」配置中转源并接入 Agent。
+
+卸载前，请先在「Agent 接入」页关闭需要断开的开关，再将「应用程序」中的 **IMG Switch** 移到废纸篓。配置默认保留。
+
+## 首次使用
+
+1. **准备服务：** 先获取支持图片生成、兼容 OpenAI 接口的服务地址、API Key 和可用生图模型。IMG Switch 本身不提供密钥或生图服务。
+2. **添加中转源：** 打开「中转源」→「＋ 添加中转源」，填写自定义名称、Base URL（通常以 `/v1` 结尾）、API Key 和至少一个生图模型，然后点击「保存」。可点「⟳ 获取」拉取模型；如果服务不支持获取列表，可手动填写模型。
+3. **检查连接：** 可在中转源卡片上点击「探测」，检查服务是否可达、密钥是否可用。
+4. **接入 Agent：** 打开「Agent 接入」，开启要使用的 Agent 右侧开关。页面只显示本机检测到的 Agent；也可点击「全部接入」。
+5. **开始生图：** 在目标项目中打开已接入的 Agent，提出图片生成请求，例如「生成一张山间日出的插画」。默认图片和对应记录保存在该项目的 `generated/` 目录。
+
+需要停止某个 Agent 的接入时，在「Agent 接入」关闭对应开关；「全部断开」可一次断开全部接入，配置仍保留。API Key 保存在本机配置中，并会在请求时发送给你配置的中转源；不要提交或分享配置文件。
 
 ## 功能特性
 
@@ -14,9 +55,9 @@ IMG Switch 把一个 OpenAI 兼容的**中转站生图技能**按需安装进本
 - **批量生图 / 模型发现 / 源体检**：引擎 CLI 一并支持（`--models`、`--check`、`batch`）
 - **本机配置**：API Key 保存在本机配置文件中；生成记录和日志可能包含敏感信息，分享前须检查
 
-## 快速开始（Windows）
+## 从源码运行与构建
 
-### 方式 A：源码运行
+### Windows 源码运行
 
 ```bash
 # 需要 Python 3.10+（含 tkinter）
@@ -30,7 +71,7 @@ python app.py status   # 查看状态
 
 在「Agent 接入」页开启需要接入的 Agent，然后在「中转源」页添加 Base URL、API Key 和生图模型。之后在项目目录中使用已接入的 Agent 生成图片，图片会保存在该项目的 `generated/`。
 
-### 方式 B：构建 Windows 测试安装包
+### 构建 Windows 测试安装包
 
 在 Windows x64 上安装 Python 3.12、PyInstaller 6.16.0 和 Inno Setup 6，并将 `ISCC.exe` 加入 PATH。然后运行：
 
@@ -41,7 +82,7 @@ python packaging/windows/build_windows.py --version 0.1.0 --output dist/windows
 
 安装包为未签名的测试版本，Windows 可能显示安全提示。卸载前请先在控制台关闭 Agent 接入；卸载程序不会自动删除已接入的技能和用户配置。分发前应检查构建产物及其依赖的元数据和许可证。
 
-## macOS / Linux
+### macOS / Linux 源码运行与 macOS 构建
 
 源码方式运行 `python3 app.py gui`，需要支持 tkinter 的 Python。配置落在 `~/.config/failover-imagegen-tool/`。
 
@@ -54,7 +95,7 @@ PYTHON=python3 bash packaging/macos/build.sh dist/macos
 
 DMG 包含应用，可拖入 Applications；分别在 Apple Silicon 和 Intel 机器上构建对应版本。测试包未使用 Developer ID 正式签名，也未公证，macOS 可能阻止或提示首次打开。安装包内的独立引擎供接入的 Agent 调用，不依赖系统 Python。关闭接入后可删除应用；用户配置默认保留。
 
-仓库中的 `.github/workflows/test-installers.yml` 提供手动触发的三平台构建流程，不自动创建公开 Release。构建完成不等于安装、隐私或许可审查完成，发布前仍须逐项验证。
+仓库中的 `.github/workflows/test-installers.yml` 支持手动触发构建；推送以 `v` 开头的标签时，三平台构建与检查全部通过后会创建测试 Release。构建完成不等于安装、隐私或许可审查完成，发布前仍须逐项验证。
 
 构建时会清理 CPython 运行时文档中的用户目录示例，并保留第三方许可及运行时修改说明。未经处理的旧测试安装包仍会被隐私扫描拦截；发布时须使用新构建并通过各平台验证的产物。
 
