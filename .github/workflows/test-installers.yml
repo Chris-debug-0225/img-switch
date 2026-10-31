@@ -163,6 +163,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME" release-assets/*
-          --verify-tag --prerelease
+          --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease
           --title "IMG Switch $GITHUB_REF_NAME (测试版)"
           --notes "测试安装包尚未正式签名；macOS 版本尚未公证。使用前请核对平台和 SHA-256。"
