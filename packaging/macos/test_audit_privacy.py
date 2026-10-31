@@ -22,5 +22,11 @@ class AuditPrivacyTests(unittest.TestCase):
         sample = getattr(audit, 'EXAMPLE', b"/Users/example-user')")
         self.assertIn('user_path', audit.classify_bytes(sample))
 
+    def test_reports_location_and_category_without_path_contents(self):
+        scanner = audit.Scanner()
+        scanner.bytes(b'/Users/secret-user/private', 'Frameworks/example.bin')
+        self.assertEqual(scanner.locations[('Frameworks/example.bin', 'user_path')], 1)
+        self.assertNotIn('secret-user', repr(scanner.locations))
+
 if __name__ == '__main__':
     unittest.main()

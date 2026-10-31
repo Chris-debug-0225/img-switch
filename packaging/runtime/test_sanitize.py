@@ -45,5 +45,16 @@ class SanitizeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.patch_spec(spec, Path(tmp) / 'runtime')
 
+    def test_framework_python_binary_is_copied_and_scrubbed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = root / 'Python'
+            line = b"        splitroot('C:/Users/test-user') == ('C:', '/', 'Users/test-user')\n"
+            original.write_bytes(b'header\n' + line)
+            before = original.read_bytes()
+            result = module.scrub_binaries([('Python', str(original), 'BINARY')], root / 'copy')
+            self.assertEqual(original.read_bytes(), before)
+            self.assertNotIn(b'/Users/', Path(result[0][1]).read_bytes())
+
 if __name__ == '__main__':
     unittest.main()

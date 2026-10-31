@@ -31,40 +31,46 @@ def classify_bytes(data):
 class Scanner:
     def __init__(self):
         self.counts = collections.Counter()
+        self.locations = collections.Counter()
         self.files = 0
         self.codes = 0
         self.host = socket.gethostname().encode()
         self.source = str(Path(__file__).resolve().parents[2]).encode()
 
-    def bytes(self, data):
-        self.counts.update(classify_bytes(data))
+    def bytes(self, data, location='<unknown>'):
+        findings = set(classify_bytes(data))
         if len(self.host) >= 6 and self.host in data:
-            self.counts['hostname'] += 1
+            findings.add('hostname')
         if len(self.source) >= 6 and self.source in data:
-            self.counts['source_path'] += 1
+            findings.add('source_path')
+        self.counts.update(findings)
+        for label in findings:
+            self.locations[(location, label)] += 1
 
-    def code(self, obj):
+    def code(self, obj, location='<unknown>'):
         self.codes += 1
-        self.bytes(obj.co_filename.encode('utf-8', errors='replace'))
+        self.bytes(obj.co_filename.encode('utf-8', errors='replace'), location)
         if os.path.isabs(obj.co_filename) or re.match(r'^[A-Za-z]:[\\/]', obj.co_filename):
             self.counts['absolute_code_path'] += 1
+            self.locations[(location, 'absolute_code_path')] += 1
         for value in obj.co_consts:
             if isinstance(value, types.CodeType):
-                self.code(value)
+                self.code(value, location)
             elif isinstance(value, str):
-                self.bytes(value.encode('utf-8', errors='replace'))
+                self.bytes(value.encode('utf-8', errors='replace'), location)
             elif isinstance(value, bytes):
-                self.bytes(value)
+                self.bytes(value, location)
 
-    def zip(self, data):
+    def zip(self, data, location):
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             for name in archive.namelist():
                 payload = archive.read(name)
-                self.bytes(payload)
+                entry = location + ' :: ' + name
+                self.bytes(payload, entry)
                 if name.endswith('.pyc'):
-                    self.code(marshal.loads(payload[16:]))
+                    self.code(marshal.loads(payload[16:]), entry)
 
-    def pyinstaller(self, file):
+    def pyinstaller(self, file, location):
         from PyInstaller.archive.readers import CArchiveReader
         archive = CArchiveReader(str(file))
         for name in archive.toc:
@@ -73,15 +79,15 @@ class Scanner:
                 for item in nested.toc:
                     payload = nested.extract(item)
                     if isinstance(payload, types.CodeType):
-                        self.code(payload)
+                        self.code(payload, location + ' :: PYZ :: ' + item)
                     elif isinstance(payload, bytes):
-                        self.bytes(payload)
+                        self.bytes(payload, location + ' :: PYZ :: ' + item)
             elif name.endswith('.zip'):
-                self.zip(archive.extract(name))
+                self.zip(archive.extract(name), location + ' :: ' + name)
             elif name in ('app', 'failover_imagegen_tool', 'pyiboot01_bootstrap', 'pyi_rth_inspect', 'pyi_rth__tkinter'):
-                self.code(marshal.loads(archive.extract(name)))
+                self.code(marshal.loads(archive.extract(name)), location + ' :: ' + name)
             else:
-                self.bytes(archive.extract(name))
+                self.bytes(archive.extract(name), location + ' :: ' + name)
 
     def app(self, root):
         contents = root / 'Contents'
@@ -91,11 +97,12 @@ class Scanner:
             if file.is_file() and not file.is_symlink():
                 self.files += 1
                 data = file.read_bytes()
-                self.bytes(data)
+                location = file.relative_to(contents).as_posix()
+                self.bytes(data, location)
                 if file.name == 'base_library.zip':
-                    self.zip(data)
-        self.pyinstaller(contents / 'MacOS/IMG Switch')
-        self.pyinstaller(contents / 'Frameworks/engine/bin/img-switch-engine')
+                    self.zip(data, location)
+        self.pyinstaller(contents / 'MacOS/IMG Switch', 'MacOS/IMG Switch')
+        self.pyinstaller(contents / 'Frameworks/engine/bin/img-switch-engine', 'Frameworks/engine/bin/img-switch-engine')
 
 
 def main():
@@ -110,6 +117,13 @@ def main():
     print('Files scanned:', scanner.files, '; Python code objects:', scanner.codes)
     for label, count in sorted(scanner.counts.items()):
         print(label + ':', count)
+    for (location, label), count in sorted(scanner.locations.items()):
+        # Report package-relative names only, never the matched contents.
+        label_bytes = location.encode('utf-8', errors='replace')
+        if (USER_PATH.search(label_bytes) or os.path.isabs(location) or
+                (len(scanner.host) >= 6 and scanner.host.lower() in label_bytes.lower())):
+            location = '<redacted-location>'
+        print('  %s: %s (%d)' % (location, label, count))
     bad = sum(scanner.counts.values())
     print('Result:', 'REVIEW REQUIRED' if bad else 'No unexpected path/hostname matches')
     return int(bool(bad))

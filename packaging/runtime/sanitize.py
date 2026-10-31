@@ -22,7 +22,7 @@ def scrub_binaries(binaries, directory):
     result = []
     for name, source, kind in binaries:
         filename = Path(name).name.lower()
-        if (filename.startswith('libpython') and filename.endswith('.dylib')) or re.fullmatch(r'python3\d+\.dll', filename):
+        if filename == 'python' or (filename.startswith('libpython') and filename.endswith('.dylib')) or re.fullmatch(r'python3\d+\.dll', filename):
             data = Path(source).read_bytes()
             data, count = remove_example(data)
             if count:
