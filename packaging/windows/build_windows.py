@@ -83,6 +83,7 @@ def main():
         shutil.copyfile(dist / 'img-switch-engine.exe', bin_dir / 'img-switch-engine.exe')
         hidden = [part for module in GUI_HIDDEN_IMPORTS for part in ('--hidden-import', module)]
         freeze('IMG-Switch', ['--onefile', '--windowed',
+               '--icon', str(ROOT / 'assets/img-switch.ico'),
                '--add-data', str(stage / 'engine') + ';engine'] + hidden +
                ['--paths', str(stage / 'engine/scripts')], stage / 'app.py')
         audit_executable(dist / 'IMG-Switch.exe')
@@ -99,6 +100,7 @@ def main():
                         '/DPythonLicense=' + str(stage / 'PYTHON-LICENSE.txt'),
                         '/DThirdPartyLicenses=' + str(notices),
                         '/DRuntimeNotice=' + str(ROOT / 'packaging/runtime/NOTICE.txt'),
+                        '/DSetupIcon=' + str(ROOT / 'assets/img-switch.ico'),
                         '/O' + str(output), str(ROOT / 'packaging/windows/setup.iss')], check=True)
         print('Unsigned Windows test installer:', installer)
 

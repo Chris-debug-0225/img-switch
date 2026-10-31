@@ -4,6 +4,8 @@
 
 IMG Switch 把一个 OpenAI 兼容的**中转站生图技能**按需安装进本机各 AI 编程 Agent（ZCode / Codex / Claude Code / Trae / CodeBuddy / MateClaw / Cursor / 跨工具 `.agents` 标准），并提供一个 ccswitch 风格的图形控制台管理一切。适合没有 GPT 套餐、但想在自己的工作流里稳定出图的用户。
 
+**关注作者** · [B站：不吃辣的Chris](https://space.bilibili.com/387976167) · [抖音：不吃辣的Chris](https://v.douyin.com/AbSCTFj0QLM/) · [小红书：AI硬核智识](https://xhslink.cn/o/2mNaOYWXMZK) · [个人网站](https://heychris.cn/)
+
 ## 下载与安装
 
 当前提供 **v0.1.0-beta.5 测试版**。安装包已包含运行程序，**无需预装 Python**。

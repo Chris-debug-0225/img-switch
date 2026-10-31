@@ -1238,8 +1238,10 @@ def cmd_gui():
             mark = tk.Canvas(logo, width=30, height=30, bg=C["side"],
                              highlightthickness=0)
             rrect(mark, 1, 1, 29, 29, 8, fill=C["primary"], outline="")
-            mark.create_text(15, 15, text="⇄", fill="#ffffff",
-                             font=("Microsoft YaHei UI", 13, "bold"))
+            rrect(mark, 7, 7, 21, 19, 3, fill="#ffe7d2", outline="")
+            rrect(mark, 10, 11, 24, 23, 3, fill="#ffffff", outline="")
+            mark.create_polygon(12, 21, 16, 16, 19, 19, 21, 17, 24, 21,
+                                fill=C["primary"], outline="")
             mark.pack(side="left", padx=(0, 10))
             tbox = tk.Frame(logo, bg=C["side"])
             tbox.pack(side="left")

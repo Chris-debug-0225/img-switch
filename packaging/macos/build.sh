@@ -32,7 +32,7 @@ cd "$work/source"
 "$python" "$root/packaging/runtime/sanitize.py" "$work/img-switch-engine.spec" "$work/runtime-cli"
 "$python" -m PyInstaller --noconfirm --clean --distpath "$work/cli-dist" --workpath "$work/cli-build" "$work/img-switch-engine.spec"
 cp "$work/cli-dist/img-switch-engine" engine/bin/img-switch-engine
-"$python" -m PyInstaller.utils.cliutils.makespec --onedir --windowed --name 'IMG Switch' --paths engine/scripts --hidden-import failovercfg --hidden-import urllib.request --hidden-import urllib.error --hidden-import urllib.parse --hidden-import glob --hidden-import uuid --hidden-import base64 --hidden-import argparse --hidden-import json --hidden-import time --hidden-import socket --add-data "$certifi_bundle:certifi" --runtime-hook "$root/packaging/macos/ssl_runtime_hook.py" --add-data "$work/source/engine:engine" --add-data "$work/licenses:licenses" --specpath "$work" app.py
+"$python" -m PyInstaller.utils.cliutils.makespec --onedir --windowed --name 'IMG Switch' --icon "$root/assets/img-switch.icns" --paths engine/scripts --hidden-import failovercfg --hidden-import urllib.request --hidden-import urllib.error --hidden-import urllib.parse --hidden-import glob --hidden-import uuid --hidden-import base64 --hidden-import argparse --hidden-import json --hidden-import time --hidden-import socket --add-data "$certifi_bundle:certifi" --runtime-hook "$root/packaging/macos/ssl_runtime_hook.py" --add-data "$work/source/engine:engine" --add-data "$work/licenses:licenses" --specpath "$work" app.py
 "$python" "$root/packaging/runtime/sanitize.py" "$work/IMG Switch.spec" "$work/runtime-gui"
 "$python" -m PyInstaller --noconfirm --clean --distpath "$work/gui-dist" --workpath "$work/gui-build" "$work/IMG Switch.spec"
 mkdir -p "$work/dmg"

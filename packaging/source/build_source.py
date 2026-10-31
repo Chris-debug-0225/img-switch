@@ -7,6 +7,7 @@ import zipfile
 
 
 FILES = (
+    "assets/img-switch-icon.png", "assets/img-switch.icns", "assets/img-switch.ico",
     ".gitignore", "LICENSE", "README.md", "app.py", "app_tests.py",
     "test_packaged_runtime.py", "安装.bat", "卸载.bat", "打包.bat",
     "engine/.gitignore", "engine/README.md", "engine/SKILL.md",
