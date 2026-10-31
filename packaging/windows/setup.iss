@@ -19,6 +19,7 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\IMG-Switch.exe
 [Files]
+Source: "{#RuntimeNotice}"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ProjectLicense}"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "{#PythonLicense}"; DestDir: "{app}\licenses"; Flags: ignoreversion

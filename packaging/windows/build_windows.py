@@ -67,18 +67,24 @@ def main():
         shutil.copyfile(ROOT / 'app.py', stage / 'app.py')
         dist, work, specs = temp / 'dist', temp / 'work', temp / 'specs'
         specs.mkdir()
-        common = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
-                  '--distpath', str(dist), '--workpath', str(work), '--specpath', str(specs)]
-        subprocess.run(common + ['--onefile', '--console', '--name', 'img-switch-engine',
-                       str(stage / 'engine/scripts/failover_imagegen_tool.py')], check=True, cwd=stage)
+        def freeze(name, options, script):
+            subprocess.run([sys.executable, '-m', 'PyInstaller.utils.cliutils.makespec',
+                            '--specpath', str(specs), '--name', name] + options + [str(script)],
+                           check=True, cwd=stage)
+            spec = specs / (name + '.spec')
+            subprocess.run([sys.executable, str(ROOT / 'packaging/runtime/sanitize.py'),
+                            str(spec), str(temp / ('runtime-' + name))], check=True, cwd=stage)
+            subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
+                            '--distpath', str(dist), '--workpath', str(work), str(spec)],
+                           check=True, cwd=stage)
+        freeze('img-switch-engine', ['--onefile', '--console'], stage / 'engine/scripts/failover_imagegen_tool.py')
         bin_dir = stage / 'engine/bin'
         bin_dir.mkdir()
         shutil.copyfile(dist / 'img-switch-engine.exe', bin_dir / 'img-switch-engine.exe')
         hidden = [part for module in GUI_HIDDEN_IMPORTS for part in ('--hidden-import', module)]
-        subprocess.run(common + ['--onefile', '--windowed', '--name', 'IMG-Switch',
-                       '--add-data', str(stage / 'engine') + ';engine'] + hidden +
-                       ['--paths', str(stage / 'engine/scripts'), str(stage / 'app.py')],
-                       check=True, cwd=stage)
+        freeze('IMG-Switch', ['--onefile', '--windowed',
+               '--add-data', str(stage / 'engine') + ';engine'] + hidden +
+               ['--paths', str(stage / 'engine/scripts')], stage / 'app.py')
         audit_executable(dist / 'IMG-Switch.exe')
         # Python's Windows distribution includes the license terms for Python and
         # its bundled third-party components. Fail closed if they are unavailable.
@@ -92,6 +98,7 @@ def main():
                         '/DProjectLicense=' + str(stage / 'PROJECT-LICENSE.txt'),
                         '/DPythonLicense=' + str(stage / 'PYTHON-LICENSE.txt'),
                         '/DThirdPartyLicenses=' + str(notices),
+                        '/DRuntimeNotice=' + str(ROOT / 'packaging/runtime/NOTICE.txt'),
                         '/O' + str(output), str(ROOT / 'packaging/windows/setup.iss')], check=True)
         print('Unsigned Windows test installer:', installer)
 

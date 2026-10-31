@@ -18,15 +18,20 @@ mkdir -p "$work/cli-dist" "$work/gui-dist" "$work/licenses" "$work/source/engine
 cp "$work/source/LICENSE" "$work/licenses/IMG-SWITCH.txt"
 cp "$root/packaging/macos/licenses/TCL.txt" "$work/licenses/"
 cp "$root/packaging/macos/licenses/TK.txt" "$work/licenses/"
+cp "$root/packaging/runtime/NOTICE.txt" "$work/licenses/RUNTIME-MODIFICATION.txt"
 stdlib="$("$python" -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
 if [ ! -f "$stdlib/LICENSE.txt" ]; then echo 'Python LICENSE.txt missing; cannot prepare package.' >&2; exit 1; fi
 cp "$stdlib/LICENSE.txt" "$work/licenses/PYTHON.txt"
 pyinstaller_license="$("$python" -c 'import importlib.metadata as m; d=m.distribution("pyinstaller"); files=[f for f in d.files if str(f).endswith("/COPYING.txt")]; assert len(files)==1, "PyInstaller license missing"; print(d.locate_file(files[0]))')"
 cp "$pyinstaller_license" "$work/licenses/PYINSTALLER.txt"
 cd "$work/source"
-"$python" -m PyInstaller --noconfirm --clean --onefile --console --name img-switch-engine --paths engine/scripts --distpath "$work/cli-dist" --workpath "$work/cli-build" --specpath "$work" engine/scripts/failover_imagegen_tool.py
+"$python" -m PyInstaller.utils.cliutils.makespec --onefile --console --name img-switch-engine --paths engine/scripts --specpath "$work" engine/scripts/failover_imagegen_tool.py
+"$python" "$root/packaging/runtime/sanitize.py" "$work/img-switch-engine.spec" "$work/runtime-cli"
+"$python" -m PyInstaller --noconfirm --clean --distpath "$work/cli-dist" --workpath "$work/cli-build" "$work/img-switch-engine.spec"
 cp "$work/cli-dist/img-switch-engine" engine/bin/img-switch-engine
-"$python" -m PyInstaller --noconfirm --clean --onedir --windowed --name 'IMG Switch' --paths engine/scripts --hidden-import failovercfg --hidden-import urllib.request --hidden-import urllib.error --hidden-import urllib.parse --hidden-import glob --hidden-import uuid --hidden-import base64 --hidden-import argparse --hidden-import json --hidden-import time --hidden-import socket --add-data "$work/source/engine:engine" --add-data "$work/licenses:licenses" --distpath "$work/gui-dist" --workpath "$work/gui-build" --specpath "$work" app.py
+"$python" -m PyInstaller.utils.cliutils.makespec --onedir --windowed --name 'IMG Switch' --paths engine/scripts --hidden-import failovercfg --hidden-import urllib.request --hidden-import urllib.error --hidden-import urllib.parse --hidden-import glob --hidden-import uuid --hidden-import base64 --hidden-import argparse --hidden-import json --hidden-import time --hidden-import socket --add-data "$work/source/engine:engine" --add-data "$work/licenses:licenses" --specpath "$work" app.py
+"$python" "$root/packaging/runtime/sanitize.py" "$work/IMG Switch.spec" "$work/runtime-gui"
+"$python" -m PyInstaller --noconfirm --clean --distpath "$work/gui-dist" --workpath "$work/gui-build" "$work/IMG Switch.spec"
 mkdir -p "$work/dmg"
 cp -R "$work/gui-dist/IMG Switch.app" "$work/dmg/"
 ln -s /Applications "$work/dmg/Applications"

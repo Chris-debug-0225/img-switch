@@ -23,6 +23,7 @@ FILES = (
     "packaging/windows/test_audit_privacy.py", "packaging/windows/test_build_windows.py",
     "packaging/windows/licenses/PYINSTALLER.txt", "packaging/windows/licenses/SOURCES.md",
     "packaging/windows/licenses/TCL.txt", "packaging/windows/licenses/TK.txt",
+    "packaging/runtime/sanitize.py", "packaging/runtime/test_sanitize.py", "packaging/runtime/NOTICE.txt",
     "packaging/source/build_source.py", "packaging/source/test_build_source.py",
     ".github/workflows/test-installers.yml",
     "docs/superpowers/plans/2026-10-29-open-source-release.md",

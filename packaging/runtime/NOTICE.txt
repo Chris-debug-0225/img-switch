@@ -1,0 +1,7 @@
+Runtime modification notice
+
+This distribution contains a modified copy of the CPython runtime. The only
+modification is removal of one nonessential example line from the splitroot
+documentation embedded in the runtime and its standard library bytecode. The
+original copyright and license notices for CPython are included alongside this
+notice.
