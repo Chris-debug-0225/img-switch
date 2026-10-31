@@ -109,7 +109,7 @@ jobs:
           hdiutil attach -readonly -nobrowse -quiet -mountpoint "$mountpoint" "artifacts/macos/IMG-Switch-macOS-${{ matrix.arch }}-unsigned.dmg"
           trap 'hdiutil detach "$mountpoint" -quiet' EXIT
           PYTHONDONTWRITEBYTECODE=1 python3 packaging/macos/smoke.py "$mountpoint/IMG Switch.app"
-          PYTHONDONTWRITEBYTECODE=1 python3 packaging/macos/audit_privacy.py "$mountpoint/IMG Switch.app"
+          IMG_SWITCH_MACHO_DIAGNOSTICS=1 PYTHONDONTWRITEBYTECODE=1 python3 packaging/macos/audit_privacy.py "$mountpoint/IMG Switch.app"
       - name: Record SHA-256
         shell: bash
         run: |

@@ -14,9 +14,43 @@ import socket
 import sys
 import types
 import zipfile
+import tempfile
 
 USER_PATH = re.compile(rb'(?i)(?:/users/[^/\s\x00]+|/home/[^/\s\x00]+|[a-z]:\\users\\[^\\\s\x00]+)')
 BUILD_PATH = re.compile(rb'(?i)(?:/private)?/tmp/img-switch-build\.[a-z0-9]+')
+
+
+def macho_path_fields(data):
+    """Classify matches by Mach-O region without printing or returning their values."""
+    offsets = [m.start() for m in USER_PATH.finditer(data)]
+    if not offsets:
+        return {}
+    from macholib.MachO import MachO
+    regions = []
+    try:
+        with tempfile.NamedTemporaryFile(prefix='img-switch-macho-') as f:
+            f.write(data)
+            f.flush()
+            for header in MachO(f.name).headers:
+                start = header.offset + header.header._size_
+                regions.append((start, start + header.header.sizeofcmds, 'load_commands'))
+                for load, command, sections in header.commands:
+                    if load.get_cmd_name() == 'LC_SYMTAB':
+                        regions.append((header.offset + command.stroff,
+                                        header.offset + command.stroff + command.strsize, 'symbol_strings'))
+                    if isinstance(sections, list):
+                        for section in sections:
+                            name = section.sectname.rstrip(b'\0').decode('ascii', errors='replace')
+                            name = re.sub(r'[^A-Za-z0-9_]', '_', name)[:32]
+                            start = header.offset + section.offset
+                            regions.append((start, start + section.size, 'section:' + name))
+    except (OSError, ValueError, TypeError, ImportError):
+        return {'unclassified': len(offsets)}
+    fields = collections.Counter()
+    for offset in offsets:
+        matches = [label for start, end, label in regions if start <= offset < end]
+        fields[matches[0] if matches else 'unclassified'] += 1
+    return dict(fields)
 
 
 def classify_bytes(data):
@@ -36,6 +70,7 @@ class Scanner:
         self.codes = 0
         self.host = socket.gethostname().encode()
         self.source = str(Path(__file__).resolve().parents[2]).encode()
+        self.macho_diagnostics = os.environ.get('IMG_SWITCH_MACHO_DIAGNOSTICS') == '1'
 
     def bytes(self, data, location='<unknown>'):
         findings = set(classify_bytes(data))
@@ -46,6 +81,9 @@ class Scanner:
         self.counts.update(findings)
         for label in findings:
             self.locations[(location, label)] += 1
+        if 'user_path' in findings and self.macho_diagnostics:
+            for field, count in macho_path_fields(data).items():
+                self.locations[(location, 'macho_' + field)] += count
 
     def code(self, obj, location='<unknown>'):
         self.codes += 1
