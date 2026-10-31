@@ -19,13 +19,14 @@ EXAMPLE_LINE = re.compile(
 )
 CPYTHON_SOURCE = re.compile(
     rb'/Users/[^/\x00\s]+/build/v[0-9]+\.[0-9]+\.[0-9]+/'
-    rb'(Modules/[A-Za-z0-9_./-]+\.(?:c|h))(?=\x00)'
+    rb'((?:Modules|Parser|Objects|Python)/[A-Za-z0-9_./-]+\.(?:c|h))(?=\x00)'
 )
+CPYTHON_VPATH = re.compile(rb'(?<=VPATH\x00)/Users/[^/\x00\s]+/build/v[0-9]+\.[0-9]+\.[0-9]+(?=\x00PLATLIBDIR\x00)')
 
 def remove_example(data):
     return EXAMPLE_LINE.subn(lambda match: b' ' * (len(match.group()) - 1) + b'\n', data)
 
-def scrub_cpython_source_paths(path):
+def scrub_cpython_source_paths(path, *, replace_vpath=False):
     """Remove only CPython __FILE__ prefixes inside Mach-O __cstring sections."""
     from macholib.MachO import MachO
     path = Path(path)
@@ -46,9 +47,15 @@ def scrub_cpython_source_paths(path):
                     left, right = match.start(), match.start(1)
                     data[left:right] = b'.' * (right - left)
                     count += 1
+                if replace_vpath:
+                    for match in CPYTHON_VPATH.finditer(data, start, end):
+                        # The frozen app supplies its own Python home; the original
+                        # build-tree location must not participate in path discovery.
+                        data[match.start():match.end()] = b'.' + b'\0' * (len(match.group()) - 1)
+                        count += 1
     if count:
         path.write_bytes(data)
-        print('Removed CPython source-build prefixes from extension module:', count)
+        print('Removed CPython source-build paths from runtime binary:', count)
     return count
 
 def scrub_binaries(binaries, directory):
@@ -66,6 +73,12 @@ def scrub_binaries(binaries, directory):
             scrub_cpython_source_paths(replacement)
             source = str(replacement)
         elif filename == 'python' or (filename.startswith('libpython') and filename.endswith('.dylib')) or re.fullmatch(r'python3\d+\.dll', filename):
+            if sys.platform == 'darwin':
+                replacement = directory / Path(name).name
+                shutil.copyfile(source, replacement)
+                subprocess.run(['strip', '-S', str(replacement)], check=True, capture_output=True)
+                scrub_cpython_source_paths(replacement, replace_vpath=True)
+                source = str(replacement)
             data = Path(source).read_bytes()
             data, count = remove_example(data)
             if count:
@@ -105,7 +118,8 @@ def patch_spec(spec, directory):
                  "a.binaries = _scrub['scrub_binaries'](a.binaries, %r)\n"
                  "a.datas = _scrub['scrub_datas'](a.datas, %r)\n\n" %
                  (str(Path(__file__).resolve()), str(Path(directory).resolve()), str(Path(directory).resolve())))
-    spec.write_text(text.replace(marker, injection + marker), encoding='utf-8')
+    bootstrap = "\npyz.dependencies = _scrub['scrub_binaries'](pyz.dependencies, %r)" % str(Path(directory).resolve() / 'bootstrap')
+    spec.write_text(text.replace(marker, injection + marker + bootstrap), encoding='utf-8')
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:

@@ -6,6 +6,7 @@ import zipfile
 import subprocess
 import sys
 import ctypes
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location('sanitize', Path(__file__).with_name('sanitize.py'))
 module = importlib.util.module_from_spec(spec)
@@ -48,6 +49,15 @@ class SanitizeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.patch_spec(spec, Path(tmp) / 'runtime')
 
+    def test_spec_scrubs_bootstrap_dependencies_before_exe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = Path(tmp) / 'app.spec'
+            spec.write_text('pyz = PYZ(a.pure)\nexe = EXE(pyz)\n', encoding='utf-8')
+            module.patch_spec(spec, Path(tmp) / 'runtime')
+            text = spec.read_text(encoding='utf-8')
+            self.assertLess(text.index('pyz = PYZ(a.pure)'), text.index('pyz.dependencies ='))
+            self.assertLess(text.index('pyz.dependencies ='), text.index('exe = EXE('))
+
     def test_framework_python_binary_is_copied_and_scrubbed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -55,7 +65,8 @@ class SanitizeTests(unittest.TestCase):
             line = b"        splitroot('C:/Users/test-user') == ('C:', '/', 'Users/test-user')\n"
             original.write_bytes(b'header\n' + line)
             before = original.read_bytes()
-            result = module.scrub_binaries([('Python', str(original), 'BINARY')], root / 'copy')
+            with mock.patch.object(module.subprocess, 'run'), mock.patch.object(module, 'scrub_cpython_source_paths'):
+                result = module.scrub_binaries([('Python', str(original), 'BINARY')], root / 'copy')
             self.assertEqual(original.read_bytes(), before)
             self.assertFalse(b'/Users/' in Path(result[0][1]).read_bytes())
 
@@ -96,6 +107,19 @@ class SanitizeTests(unittest.TestCase):
             lib = ctypes.CDLL(str(output))
             lib.sample.restype = ctypes.c_char_p
             self.assertTrue(lib.sample().endswith(b'Modules/sample.c'))
+
+    @unittest.skipUnless(sys.platform == 'darwin', 'requires macOS clang and Mach-O')
+    def test_framework_vpath_is_neutralized_only_in_string_section(self):
+        with tempfile.TemporaryDirectory(prefix='sanitize-vpath-') as tmp:
+            root = Path(tmp)
+            source, binary = root / 'sample.c', root / 'Python'
+            source.write_text('__attribute__((section("__TEXT,__cstring"))) const char entries[] = "VPATH\\0/Users/example-user/build/v3.12.10\\0PLATLIBDIR\\0";\n', encoding='utf-8')
+            subprocess.run(['cc', '-dynamiclib', str(source), '-o', str(binary)], check=True, capture_output=True)
+            self.assertTrue(b'/Users/' in binary.read_bytes())
+            self.assertEqual(module.scrub_cpython_source_paths(binary, replace_vpath=True), 1)
+            self.assertFalse(b'/Users/' in binary.read_bytes())
+            subprocess.run(['codesign', '-s', '-', '-f', str(binary)], check=True, capture_output=True)
+            ctypes.CDLL(str(binary))
 
 if __name__ == '__main__':
     unittest.main()
