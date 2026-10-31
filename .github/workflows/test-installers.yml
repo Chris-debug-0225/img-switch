@@ -3,6 +3,8 @@ name: Build unsigned test installers
 on:
   workflow_dispatch:
   push:
+    branches:
+      - 'codex/**'
     tags:
       - 'v*'
 
@@ -49,6 +51,7 @@ jobs:
         run: |
           python -B app_tests.py
           python -B engine/tests/run_tests.py
+          python -B engine/tests/test_user_agent.py
           python -B test_packaged_runtime.py
           python -B engine/tests/test_url_privacy.py
           python -B packaging/runtime/test_sanitize.py
@@ -87,15 +90,17 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install build tools
-        run: python3 -m pip install pyinstaller==6.22.3 pycdlib==1.22.0
+        run: python3 -m pip install pyinstaller==6.22.3 pycdlib==1.22.0 certifi==2026.10.23
       - name: Run isolated tests
         run: |
           python3 -B app_tests.py
           python3 -B engine/tests/run_tests.py
+          python3 -B engine/tests/test_user_agent.py
           python3 -B test_packaged_runtime.py
           python3 -B engine/tests/test_url_privacy.py
           python3 -B packaging/runtime/test_sanitize.py
           python3 -B packaging/macos/test_stage.py
+          python3 -B packaging/macos/test_certificates.py
           python3 -B packaging/macos/test_audit_privacy.py
           python3 -B packaging/macos/test_make_dmg.py
       - name: Build test disk image

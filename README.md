@@ -4,6 +4,8 @@
 
 IMG Switch 把一个 OpenAI 兼容的**中转站生图技能**按需安装进本机各 AI 编程 Agent（ZCode / Codex / Claude Code / Trae / CodeBuddy / MateClaw / Cursor / 跨工具 `.agents` 标准），并提供一个 ccswitch 风格的图形控制台管理一切。适合没有 GPT 套餐、但想在自己的工作流里稳定出图的用户。
 
+**关注作者** · [B站：不吃辣的Chris](https://space.bilibili.com/387976167) · [抖音：不吃辣的Chris](https://v.douyin.com/AbSCTFj0QLM/) · [小红书：AI硬核智识](https://xhslink.cn/o/2mNaOYWXMZK) · [个人网站](https://heychris.cn/)
+
 ## 下载与安装
 
 当前提供 **v0.1.0-beta.5 测试版**。安装包已包含运行程序，**无需预装 Python**。
@@ -89,7 +91,7 @@ python packaging/windows/build_windows.py --version 0.1.0 --output dist/windows
 在目标架构的 macOS 上使用带 tkinter 的 Python 3.12 构建未签名测试 DMG：
 
 ```bash
-python3 -m pip install pyinstaller==6.22.3 pycdlib==1.22.0
+python3 -m pip install pyinstaller==6.22.3 pycdlib==1.22.0 certifi==2026.10.23
 PYTHON=python3 bash packaging/macos/build.sh dist/macos
 ```
 
@@ -134,6 +136,7 @@ img-switch/
 
 - 统一配置：Windows `%APPDATA%\failover-imagegen-tool\config.json`，macOS/Linux `~/.config/failover-imagegen-tool/config.json`
 - 排除名单（Agent 按需接入）：同目录 `app-settings.json`
+- 安装新版后首次启动应用时，会自动更新已接入且由 IMG Switch 管理的 Agent 技能；未接入和非本软件管理的同名技能不会被自动接入或覆盖。
 - **config.json 含 API Key，切勿提交或分享**（仓库 .gitignore 已排除常见配置文件）。忽略规则不能替代发布前检查。
 - 升级或关闭旧版已接入技能时，技能目录中的旧配置和临时配置会备份到统一配置目录的 `migration-backups/`；备份同样可能含密钥，请勿提交或分享。
 - `.meta.json` 可能包含提示词、本机绝对路径、服务地址和错误信息；图片本身也可能包含敏感内容。分享前请逐项检查，无法确认时不要分享。
@@ -155,6 +158,7 @@ python engine/tests/test_url_privacy.py  # URL 凭据显示回归测试
 python test_packaged_runtime.py    # 独立引擎与技能安装回归测试
 python packaging/windows/test_build_windows.py
 python packaging/macos/test_stage.py
+python packaging/macos/test_certificates.py
 python packaging/macos/test_make_dmg.py
 python packaging/source/test_build_source.py
 python app_tests.py                # App 11 项（安装/卸载/配置迁移/GUI）

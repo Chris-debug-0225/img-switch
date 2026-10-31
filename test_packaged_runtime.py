@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -60,6 +61,67 @@ class PackagedRuntimeTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 app.install_skill([".codex"])
         self.assertEqual((skill / "SKILL.md").read_bytes(), original)
+
+    def test_startup_upgrades_only_connected_managed_skills(self):
+        (self.home / '.zcode').mkdir()
+        app.install_skill(['.codex'])
+        skill = self.home / '.codex' / 'skills' / app.SKILL_NAME
+        binary_name = 'img-switch-engine.exe' if os.name == 'nt' else 'img-switch-engine'
+        (skill / 'bin' / binary_name).write_bytes(b'old-version')
+        config = Path(app.appdata_config())
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_bytes(b'user-config')
+        unmanaged = self.home / '.zcode' / 'skills' / app.SKILL_NAME
+        unmanaged.mkdir(parents=True)
+        (unmanaged / 'SKILL.md').write_text('user-owned')
+        self.assertEqual(app.sync_connected_skills(), [])
+        self.assertEqual((skill / 'bin' / binary_name).read_bytes(),
+                         (self.engine / 'bin' / binary_name).read_bytes())
+        self.assertEqual(config.read_bytes(), b'user-config')
+        self.assertEqual((unmanaged / 'SKILL.md').read_text(), 'user-owned')
+        self.assertFalse((self.home / '.agents' / 'skills' / app.SKILL_NAME).exists())
+        with mock.patch.object(app, 'install_skill', side_effect=AssertionError('already current')):
+            self.assertEqual(app.sync_connected_skills(), [])
+
+    def test_startup_preserves_old_skill_and_reports_upgrade_failure(self):
+        app.install_skill(['.codex'])
+        skill = self.home / '.codex' / 'skills' / app.SKILL_NAME
+        binary_name = 'img-switch-engine.exe' if os.name == 'nt' else 'img-switch-engine'
+        binary = skill / 'bin' / binary_name
+        binary.write_bytes(b'old-version')
+        with mock.patch.object(app.shutil, 'copytree', side_effect=OSError('copy failed')):
+            errors = app.sync_connected_skills()
+        self.assertTrue(errors)
+        self.assertIn('.codex', str(errors))
+        self.assertEqual(binary.read_bytes(), b'old-version')
+
+    def test_startup_does_not_reactivate_disabled_agent(self):
+        app.install_skill(['.codex'])
+        skill = self.home / '.codex' / 'skills' / app.SKILL_NAME
+        binary_name = 'img-switch-engine.exe' if os.name == 'nt' else 'img-switch-engine'
+        binary = skill / 'bin' / binary_name
+        binary.write_bytes(b'old-version')
+        app.set_host_enabled('.codex', False)
+        self.assertEqual(app.sync_connected_skills(), [])
+        self.assertEqual(binary.read_bytes(), b'old-version')
+
+    def test_gui_launch_updates_previously_connected_skill(self):
+        app.install_skill(['.codex'])
+        skill = self.home / '.codex' / 'skills' / app.SKILL_NAME
+        binary_name = 'img-switch-engine.exe' if os.name == 'nt' else 'img-switch-engine'
+        binary = skill / 'bin' / binary_name
+        binary.write_bytes(b'old-version')
+        bundle = self.root / 'application'
+        bundle.mkdir()
+        shutil.copyfile(Path(app.__file__), bundle / 'app.py')
+        shutil.copytree(Path(app.__file__).parent / 'engine', bundle / 'engine')
+        (bundle / 'engine' / 'bin').mkdir(exist_ok=True)
+        shutil.copyfile(self.engine / 'bin' / binary_name, bundle / 'engine' / 'bin' / binary_name)
+        env = dict(os.environ, FAILOVER_IMAGEGEN_APP_SMOKE='1')
+        result = subprocess.run([sys.executable, str(bundle / 'app.py'), 'gui'], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(binary.read_bytes(), (self.engine / 'bin' / binary_name).read_bytes())
 
     def test_failed_rollback_keeps_backup(self):
         app.install_skill([".codex"])

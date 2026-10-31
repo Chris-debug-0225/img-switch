@@ -18,6 +18,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\IMG-Switch.exe
+SetupIconFile={#SetupIcon}
 [Files]
 Source: "{#RuntimeNotice}"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion

@@ -43,6 +43,12 @@ def run_app(app_bundle):
             engine = skill / 'bin/img-switch-engine'
             if not engine.is_file():
                 raise RuntimeError('installed engine missing')
+            engine.write_bytes(b'outdated managed engine')
+            upgrade = subprocess.run([str(app), 'gui'], env=env, text=True,
+                                     capture_output=True, timeout=30)
+            bundled_engine = Path(app_bundle) / 'Contents/Resources/engine/bin/img-switch-engine'
+            if upgrade.returncode or engine.read_bytes() != bundled_engine.read_bytes():
+                raise RuntimeError('GUI launch did not upgrade the connected engine')
             p = subprocess.run([str(engine), 'generate', '--prompt', 'test image', '--name', 'smoke', '--size', '64x64'], cwd=root, env=env, text=True, capture_output=True, timeout=60)
             if p.returncode:
                 raise RuntimeError('generation failed: %s %s' % (p.stdout, p.stderr))
@@ -53,7 +59,7 @@ def run_app(app_bundle):
             off = subprocess.run([str(app), 'off'], env=env, text=True, capture_output=True, timeout=30)
             if off.returncode or skill.exists() or not cfg.is_file():
                 raise RuntimeError('uninstall did not preserve configuration')
-            print('PASS GUI, skill install, no-Python mock generation, uninstall and config preservation')
+            print('PASS GUI, skill install and upgrade, no-Python mock generation, uninstall and config preservation')
     finally:
         server.shutdown()
         server.server_close()

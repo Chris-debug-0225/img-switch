@@ -20,16 +20,36 @@ sources 数组顺序即故障切换优先级：排在前的先用；
 import json
 import os
 import re
+import ssl
+import sys
 import urllib.parse
 
 CONFIG_ENV = "FAILOVER_IMAGEGEN_TOOL_CONFIG"
 CONFIG_FILENAME = "config.json"
 DEFAULT_TIMEOUT = 300  # 生图（尤其 4K）耗时较长，默认放宽到 5 分钟
+USER_AGENT = "IMG-Switch/1.0"
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_\-]{6,}"),
     re.compile(r"Bearer\s+[A-Za-z0-9_\-.]{6,}", re.IGNORECASE),
 ]
+
+
+def api_headers(api_key):
+    """Identify the client consistently for every authenticated relay request."""
+    return {"Authorization": "Bearer " + api_key, "User-Agent": USER_AGENT}
+
+
+def configure_default_certificates():
+    """Let macOS source installations use system roots when Python has none."""
+    if sys.platform != "darwin" or "SSL_CERT_FILE" in os.environ or "SSL_CERT_DIR" in os.environ:
+        return
+    paths = ssl.get_default_verify_paths()
+    if not paths.cafile and not paths.capath and os.path.isfile("/etc/ssl/cert.pem"):
+        os.environ["SSL_CERT_FILE"] = "/etc/ssl/cert.pem"
+
+
+configure_default_certificates()
 
 
 def skill_root():

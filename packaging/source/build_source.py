@@ -7,16 +7,18 @@ import zipfile
 
 
 FILES = (
+    "assets/img-switch-icon.png", "assets/img-switch.icns", "assets/img-switch.ico",
     ".gitignore", "LICENSE", "README.md", "app.py", "app_tests.py",
     "test_packaged_runtime.py", "安装.bat", "卸载.bat", "打包.bat",
     "engine/.gitignore", "engine/README.md", "engine/SKILL.md",
     "engine/config.example.json", "engine/prompts/example.txt",
     "engine/scripts/failovercfg.py", "engine/scripts/failover_imagegen_tool.py",
     "engine/scripts/setup.py", "engine/tests/mock_relay.py", "engine/tests/run_tests.py",
-    "engine/tests/test_url_privacy.py",
+    "engine/tests/test_url_privacy.py", "engine/tests/test_user_agent.py",
     "packaging/macos/audit_privacy.py", "packaging/macos/build.sh", "packaging/macos/smoke.py",
     "packaging/macos/stage.py", "packaging/macos/make_dmg.py", "packaging/macos/test_audit_privacy.py",
     "packaging/macos/test_stage.py", "packaging/macos/test_make_dmg.py",
+    "packaging/macos/ssl_runtime_hook.py", "packaging/macos/test_certificates.py",
     "packaging/macos/licenses/TCL.txt", "packaging/macos/licenses/TK.txt",
     "packaging/windows/audit_privacy.py", "packaging/windows/build_windows.py",
     "packaging/windows/mock_server.py", "packaging/windows/setup.iss", "packaging/windows/smoke.ps1",
