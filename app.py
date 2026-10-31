@@ -14,9 +14,11 @@
 本机 HOME 隔离（测试）：FAILOVER_IMAGEGEN_APP_HOME=<目录>
 """
 import datetime
+import filecmp
 import importlib.util
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -270,6 +272,41 @@ def install_skill(hosts=None):
     return installed
 
 
+def sync_connected_skills():
+    """Upgrade only already-connected managed skills to this packaged release."""
+    source = engine_dir()
+    binary = "img-switch-engine.exe" if os.name == "nt" else "img-switch-engine"
+    if not os.path.isfile(os.path.join(source, "bin", binary)):
+        return []  # Source installations have no bundled runtime to propagate.
+    failures = []
+    for host, _label, _root, active in agent_targets():
+        if not active or host_disabled(host) or not host_hooked(host):
+            continue
+        try:
+            with tempfile.TemporaryDirectory(prefix="img-switch-compare-") as work:
+                expected = os.path.join(work, "expected")
+                shutil.copytree(source, expected, ignore=shutil.ignore_patterns(
+                    "__pycache__", "config.json", "config.json.tmp", "*.pyc"))
+                _prepare_packaged_skill(expected)
+                destination = skill_dst(host)
+                current = True
+                for root, _dirs, files in os.walk(expected):
+                    for name in files:
+                        expected_file = os.path.join(root, name)
+                        installed_file = os.path.join(destination, os.path.relpath(expected_file, expected))
+                        if not os.path.isfile(installed_file) or not filecmp.cmp(
+                                expected_file, installed_file, shallow=False):
+                            current = False
+                            break
+                    if not current:
+                        break
+                if not current and not install_skill([host]):
+                    raise RuntimeError("未能更新已接入的技能")
+        except Exception as error:  # noqa: BLE001
+            failures.append((host, type(error).__name__))
+    return failures
+
+
 def remove_skill(hosts=None):
     """移除指定宿主集合的本 skill；hosts=None 表示全部（安全兜底，off 用）。"""
     _migrate_local_config()
@@ -445,14 +482,19 @@ def cmd_gui():
     def flat_btn(parent, text, command, fg=None, bg=None, padx=10, pady=3,
                  font=None):
         """ccswitch 式扁平小文字按钮（悬停浅灰底）。"""
-        bg = bg or C["card"]
+        bg = bg or parent.cget("bg")
         color = fg or C["muted"]
-        b = tk.Button(parent, text=text, relief="flat", bd=0, bg=bg, fg=color,
-                      activebackground=C["seg"], activeforeground=color,
-                      font=font or FONT_SM, cursor="hand2", padx=padx, pady=pady,
-                      command=command)
+        # Aqua draws a native rounded bezel for tk.Button even with relief=flat.
+        # Labels retain the card's exact background on both macOS and Windows.
+        b = tk.Label(parent, text=text, bd=0, bg=bg, fg=color, takefocus=True,
+                     font=font or FONT_SM, cursor="hand2", padx=padx, pady=pady)
         b.bind("<Enter>", lambda e: b.config(bg=C["seg"]))
         b.bind("<Leave>", lambda e: b.config(bg=bg))
+        b.bind("<Button-1>", lambda e: command())
+        b.bind("<Return>", lambda e: command())
+        b.bind("<space>", lambda e: command())
+        b.bind("<FocusIn>", lambda e: b.config(bg=C["seg"]))
+        b.bind("<FocusOut>", lambda e: b.config(bg=bg))
         return b
 
     def pill(parent, text, fg, bg, padx=10, pady=3):
@@ -877,34 +919,47 @@ def cmd_gui():
             s = cfg["sources"][i]
             label.config(text="探测中…", fg=C["muted"])
             self.app.set_status("正在探测「%s」…" % s["name"], "off")
+            results = queue.Queue()
 
             def worker():
-                text, color = self._ping(s)
-                self.app.after(0, lambda: label.config(text=text, fg=color))
-                self.app.after(0, lambda: self.app.set_status(
-                    "「%s」%s" % (s["name"], text)))
+                results.put(self._ping(s))
+
+            def finish():
+                if not label.winfo_exists():
+                    return
+                try:
+                    text, color = results.get_nowait()
+                except queue.Empty:
+                    self.app.after(50, finish)
+                    return
+                label.config(text=text, fg=color)
+                self.app.set_status("「%s」%s" % (s["name"], text))
 
             threading.Thread(target=worker, daemon=True).start()
+            self.app.after(50, finish)
 
-        @staticmethod
-        def _ping(src):
+        def _ping(self, src):
             base = src["base_url"].rstrip("/")
             req = urllib.request.Request(
-                base + "/models", headers={"Authorization": "Bearer " + src["api_key"]})
+                base + "/models", headers=self.app.cfg_mod().api_headers(src["api_key"]))
             t0 = time.time()
             try:
                 with urllib.request.urlopen(req, timeout=12):
                     pass
                 return "✓ %dms" % int((time.time() - t0) * 1000), C["ok"]
             except urllib.error.HTTPError as e:
-                if e.code in (401, 403):
+                if e.code == 401:
                     return "✗ 密钥无效", C["danger"]
+                if e.code == 403:
+                    return "✗ 请求被拒绝", C["danger"]
                 return "△ HTTP %d" % e.code, C["warn"]
             except Exception:  # noqa: BLE001
                 return "✗ 不可达", C["danger"]
 
         # ---- 模型下拉实时获取（按当前表单 URL/Key 查 /v1/models） ----
         def _fetch_models(self):
+            if self.fetch_btn.cget("text") == "获取中…":
+                return
             base = self.vars["base_url"].get().strip().rstrip("/")
             key = self.vars["api_key"].get().strip()
             if not (base.startswith("http://") or base.startswith("https://")) or not key:
@@ -912,11 +967,14 @@ def cmd_gui():
                 return
             self.fetch_btn.config(text="获取中…", fg=C["muted"])
             self.app.set_status("正在查询 %s/models …" % base, "off")
+            results = queue.Queue()
+            button, model_box = self.fetch_btn, self.model_box
+            headers = self.app.cfg_mod().api_headers(key)
 
             def worker():
                 try:
                     req = urllib.request.Request(
-                        base + "/models", headers={"Authorization": "Bearer " + key})
+                        base + "/models", headers=headers)
                     with urllib.request.urlopen(req, timeout=15) as resp:
                         data = json.loads(resp.read().decode("utf-8", "replace"))
                     ids = [str(it["id"]) for it in (data.get("data") or [])
@@ -924,22 +982,31 @@ def cmd_gui():
                     hits = [i for i in ids if IMAGE_HINT.search(i)]
                     ordered = hits + [i for i in ids if i not in hits]
 
-                    def done():
-                        self.fetch_btn.config(text="⟳ 获取", fg=C["primary"])
-                        self.model_box.config(values=ordered)
-                        if ordered:
-                            self.app.set_status("获取到 %d 个模型（生图相关 %d 个），"
-                                                "点模型下拉框选择" % (len(ordered), len(hits)))
-                        else:
-                            self.app.set_status("该站未返回任何模型（检查地址/密钥）", "off")
-                    self.app.after(0, done)
+                    results.put((ordered, len(hits), None))
                 except Exception as e:  # noqa: BLE001
-                    def fail():
-                        self.fetch_btn.config(text="⟳ 获取", fg=C["primary"])
-                        self.app.set_status("获取失败：%s" % e, "off")
-                    self.app.after(0, fail)
+                    results.put((None, 0, str(e)))
+
+            def finish():
+                if not button.winfo_exists():
+                    return
+                try:
+                    ordered, hit_count, error = results.get_nowait()
+                except queue.Empty:
+                    self.app.after(50, finish)
+                    return
+                button.config(text="⟳ 获取", fg=C["primary"])
+                if error is not None:
+                    self.app.set_status("获取失败：%s" % error, "off")
+                else:
+                    model_box.config(values=ordered)
+                    if ordered:
+                        self.app.set_status("获取到 %d 个模型（生图相关 %d 个），"
+                                            "点模型下拉框选择" % (len(ordered), hit_count))
+                    else:
+                        self.app.set_status("该站未返回任何模型（检查地址/密钥）", "off")
 
             threading.Thread(target=worker, daemon=True).start()
+            self.app.after(50, finish)
 
         def _clear_form(self):
             for v in self.vars.values():
@@ -1101,8 +1168,15 @@ def cmd_gui():
             self._cfg_mod_cache = None
             self._current_page = None
             self._build()
+            upgrade_failures = sync_connected_skills()
             self.refresh_state()
             self.show_page("dashboard")
+            if upgrade_failures:
+                messagebox.showwarning(
+                    "Agent 引擎更新失败",
+                    "无法更新以下已接入的 Agent：%s。旧引擎已保留；"
+                    "请关闭相关 Agent 后重新启动 IMG Switch，软件会再次尝试。"
+                    % "、".join(host for host, _error in upgrade_failures), parent=self)
 
         # ---- 结构 ----
         def _build(self):
@@ -1192,12 +1266,14 @@ def cmd_gui():
 
             self.container = tk.Frame(self, bg=C["bg"])
             self.container.pack(side="left", fill="both", expand=True)
+            self.container.grid_rowconfigure(0, weight=1)
+            self.container.grid_columnconfigure(0, weight=1)
             self.pages = {
                 "dashboard": DashboardPage(self.container, self),
                 "sources": SourcesPage(self.container, self),
             }
             for page in self.pages.values():
-                page.pack_forget()
+                page.grid(row=0, column=0, sticky="nsew")
 
         def _wheel(self, e):
             box = getattr(self._current_page, "scroll", None)
@@ -1228,9 +1304,7 @@ def cmd_gui():
                 sp = self.pages["sources"]
                 sp.editing_index = None
                 sp._form_visible = False
-            for k, page in self.pages.items():
-                page.pack_forget()
-            self.pages[key].pack(fill="both", expand=True)
+            self.pages[key].tkraise()
             self._current_page = self.pages[key]
             for k, b in self.nav_buttons.items():
                 if k == key:
@@ -1313,6 +1387,20 @@ def cmd_gui():
         assert set(app.pages) == {"dashboard", "sources"}, \
             "页面缺失：%s" % list(app.pages)
         dp = app.pages["dashboard"]
+        for key in ("dashboard", "sources", "dashboard"):
+            app.show_page(key)
+            app.update()
+            page = app.pages[key]
+            header = page.winfo_children()[0]
+            assert header.winfo_ismapped() and header.winfo_height() > 1, \
+                "%s 页面标题不可见: page=%s header=%s" % (
+                    key, page.winfo_geometry(), header.winfo_geometry())
+            visible = app.winfo_containing(header.winfo_rootx() + 5,
+                                           header.winfo_rooty() + 5)
+            assert visible is not None and str(visible).startswith(str(page) + "."), \
+                "%s 页面被其他页面遮挡" % key
+            assert all(p.winfo_ismapped() for p in app.pages.values()), \
+                "切换页面时不应卸载其他页面"
         active_n = sum(1 for h, _l, _r, a in agent_targets() if a)
         assert len(dp.cover_rows) == active_n, \
             "Agent 卡片数不符（只显示本机已安装的）：%d vs %d" % (
@@ -1360,6 +1448,63 @@ def cmd_gui():
         app.cfg_mod().save_config(cfg, appdata_config())
         final = app.read_sources()
         assert not any(s["name"] == "selftest-src" for s in final), "自测源未清理干净"
+        # 连接失败时必须恢复按钮并显示原因，不能在异步回调里再次抛错。
+        import socket
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        errors = []
+        app.report_callback_exception = lambda typ, value, tb: errors.append(value)
+        sp.open_add()
+        sp.vars["base_url"].set("http://127.0.0.1:%d/v1" % port)
+        sp.vars["api_key"].set("selftest-key")
+        sp._fetch_models()
+        def wait_fetch():
+            if errors or sp.fetch_btn.cget("text") != "获取中…":
+                app.quit()
+            else:
+                app.after(20, wait_fetch)
+        app.after(20, wait_fetch)
+        timeout_id = app.after(10000, app.quit)
+        app.mainloop()
+        app.after_cancel(timeout_id)
+        assert not errors, "模型获取失败回调报错: %s" % errors
+        assert sp.fetch_btn.cget("text") == "⟳ 获取", \
+            "模型获取失败后按钮未恢复: %s / %s" % (sp.fetch_btn.cget("text"), app.status.get())
+        assert app.status.get().startswith("获取失败："), "模型获取失败原因未显示"
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        class StrictRelay(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                if not self.headers.get("User-Agent", "").startswith("IMG-Switch/"):
+                    self.send_response(403)
+                    self.end_headers()
+                    return
+                body = b'{"data":[{"id":"test-image"}]}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), StrictRelay)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            base = "http://127.0.0.1:%d/v1" % server.server_port
+            assert sp._ping({"base_url": base, "api_key": "test-key"})[0].startswith("✓"), \
+                "中转站探测未发送正确的客户端标识"
+            sp.vars["base_url"].set(base)
+            sp._fetch_models()
+            app.after(20, wait_fetch)
+            timeout_id = app.after(10000, app.quit)
+            app.mainloop()
+            app.after_cancel(timeout_id)
+            assert not errors, "模型获取回调报错: %s" % errors
+            assert "test-image" in sp.model_box.cget("values"), \
+                "未获取到模型列表: %s" % app.status.get()
+        finally:
+            server.shutdown()
+            server.server_close()
         app.destroy()
         print("app selftest ok（2 页面/Agent 卡 %d 张/源页故障转移/源卡 %d 张/设为首选/内嵌新增）"
               % (active_n, len(after)))

@@ -209,7 +209,7 @@ def attempt_source(src, prompt, size, input_image, model, verbose=False):
     timeout = int(src.get("timeout") or failovercfg.DEFAULT_TIMEOUT)
     editing = bool(input_image)
     endpoint = base + ("/images/edits" if editing else "/images/generations")
-    headers = {"Authorization": "Bearer " + src["api_key"]}
+    headers = failovercfg.api_headers(src["api_key"])
     t0 = time.time()
 
     try:
@@ -613,7 +613,7 @@ def cmd_models(args):
         host = failovercfg.endpoint_host(base)
         print("源 %s（%s）：" % (src["name"], host))
         req = urllib.request.Request(
-            base + "/models", headers={"Authorization": "Bearer " + src["api_key"]})
+            base + "/models", headers=failovercfg.api_headers(src["api_key"]))
         timeout = min(20, int(src.get("timeout") or 20))
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -666,7 +666,7 @@ def cmd_check(_args):
         base = src["base_url"].rstrip("/")
         host = failovercfg.endpoint_host(base)
         req = urllib.request.Request(
-            base + "/models", headers={"Authorization": "Bearer " + src["api_key"]})
+            base + "/models", headers=failovercfg.api_headers(src["api_key"]))
         t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=12) as resp:
@@ -676,9 +676,12 @@ def cmd_check(_args):
             ok_count += 1
         except urllib.error.HTTPError as e:
             latency = int((time.time() - t0) * 1000)
-            if e.code in (401, 403):
+            if e.code == 401:
                 print("  △ %s（%s）可达但密钥无效（HTTP %d），生图会失败"
                       % (src["name"], host, e.code))
+            elif e.code == 403:
+                print("  △ %s（%s）请求被拒绝（HTTP 403）；请检查权限或服务商安全策略"
+                      % (src["name"], host))
             else:
                 print("  △ %s（%s）可达（%dms，HTTP %d 无 /models 接口，生图仍可能可用）"
                       % (src["name"], host, latency, e.code))

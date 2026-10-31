@@ -6,7 +6,7 @@ python="${PYTHON:-python3}"
 output="${1:-$root/dist}"
 arch="$(uname -m)"
 case "$arch" in arm64|x86_64) ;; *) echo "Unsupported architecture: $arch" >&2; exit 1;; esac
-"$python" -c 'import tkinter, PyInstaller, pycdlib, importlib.metadata as m; assert m.version("pycdlib") == "1.22.0", "Install pycdlib==1.22.0"'
+"$python" -c 'import tkinter, PyInstaller, pycdlib, certifi, importlib.metadata as m; assert m.version("pycdlib") == "1.22.0", "Install pycdlib==1.22.0"'
 mkdir -p "$output"
 output="$(cd "$output" && pwd)"
 dmg="$output/IMG-Switch-macOS-$arch-unsigned.dmg"
@@ -24,12 +24,15 @@ if [ ! -f "$stdlib/LICENSE.txt" ]; then echo 'Python LICENSE.txt missing; cannot
 cp "$stdlib/LICENSE.txt" "$work/licenses/PYTHON.txt"
 pyinstaller_license="$("$python" -c 'import importlib.metadata as m; d=m.distribution("pyinstaller"); files=[f for f in d.files if str(f).endswith("/COPYING.txt")]; assert len(files)==1, "PyInstaller license missing"; print(d.locate_file(files[0]))')"
 cp "$pyinstaller_license" "$work/licenses/PYINSTALLER.txt"
+certifi_bundle="$("$python" -c 'import certifi; print(certifi.where())')"
+certifi_license="$("$python" -c 'import importlib.metadata as m; d=m.distribution("certifi"); files=[f for f in d.files if str(f).endswith("/LICENSE")]; assert len(files)==1, "Certifi license missing"; print(d.locate_file(files[0]))')"
+cp "$certifi_license" "$work/licenses/CERTIFI.txt"
 cd "$work/source"
-"$python" -m PyInstaller.utils.cliutils.makespec --onefile --console --name img-switch-engine --paths engine/scripts --specpath "$work" engine/scripts/failover_imagegen_tool.py
+"$python" -m PyInstaller.utils.cliutils.makespec --onefile --console --name img-switch-engine --paths engine/scripts --add-data "$certifi_bundle:certifi" --runtime-hook "$root/packaging/macos/ssl_runtime_hook.py" --specpath "$work" engine/scripts/failover_imagegen_tool.py
 "$python" "$root/packaging/runtime/sanitize.py" "$work/img-switch-engine.spec" "$work/runtime-cli"
 "$python" -m PyInstaller --noconfirm --clean --distpath "$work/cli-dist" --workpath "$work/cli-build" "$work/img-switch-engine.spec"
 cp "$work/cli-dist/img-switch-engine" engine/bin/img-switch-engine
-"$python" -m PyInstaller.utils.cliutils.makespec --onedir --windowed --name 'IMG Switch' --paths engine/scripts --hidden-import failovercfg --hidden-import urllib.request --hidden-import urllib.error --hidden-import urllib.parse --hidden-import glob --hidden-import uuid --hidden-import base64 --hidden-import argparse --hidden-import json --hidden-import time --hidden-import socket --add-data "$work/source/engine:engine" --add-data "$work/licenses:licenses" --specpath "$work" app.py
+"$python" -m PyInstaller.utils.cliutils.makespec --onedir --windowed --name 'IMG Switch' --paths engine/scripts --hidden-import failovercfg --hidden-import urllib.request --hidden-import urllib.error --hidden-import urllib.parse --hidden-import glob --hidden-import uuid --hidden-import base64 --hidden-import argparse --hidden-import json --hidden-import time --hidden-import socket --add-data "$certifi_bundle:certifi" --runtime-hook "$root/packaging/macos/ssl_runtime_hook.py" --add-data "$work/source/engine:engine" --add-data "$work/licenses:licenses" --specpath "$work" app.py
 "$python" "$root/packaging/runtime/sanitize.py" "$work/IMG Switch.spec" "$work/runtime-gui"
 "$python" -m PyInstaller --noconfirm --clean --distpath "$work/gui-dist" --workpath "$work/gui-build" "$work/IMG Switch.spec"
 mkdir -p "$work/dmg"
