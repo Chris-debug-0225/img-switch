@@ -21,6 +21,8 @@ import os
 import queue
 import re
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -48,6 +50,36 @@ AGENT_HOSTS = [
 IMAGE_HINT = re.compile(
     r"image|dall|flux|midjourney|\bmj\b|stable|sdxl|sd3|seedream|ideogram|recraft"
     r"|kolors|hidream|pixart|imagen|wanx|imagine|banana|leo", re.IGNORECASE)
+
+
+def probe_relay(base, headers):
+    """Check the model-list endpoint, retrying a transient connection failure once."""
+    req = urllib.request.Request(base.rstrip('/') + '/models', headers=headers)
+    t0 = time.monotonic()
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=12):
+                pass
+            return '✓ %dms' % int((time.monotonic() - t0) * 1000), '模型接口响应正常', True
+        except urllib.error.HTTPError as error:
+            if error.code == 401:
+                return '✗ 鉴权失败', '模型接口返回 HTTP 401，请检查密钥', False
+            if error.code == 403:
+                return '✗ 请求被拒绝', '模型接口返回 HTTP 403，请检查服务权限或安全策略', False
+            return '△ HTTP %d' % error.code, '模型接口返回 HTTP %d' % error.code, False
+        except (urllib.error.URLError, OSError) as error:
+            reason = getattr(error, 'reason', error)
+            if isinstance(reason, ssl.SSLCertVerificationError):
+                return '✗ 证书错误', 'HTTPS 证书验证失败', False
+            if attempt == 0:
+                time.sleep(0.4)
+                continue
+            if isinstance(reason, (socket.timeout, TimeoutError)):
+                return '✗ 连接超时', '模型接口连接超时（已重试）', False
+            if isinstance(reason, socket.gaierror):
+                return '✗ 域名解析失败', '无法解析中转站域名（已重试）', False
+            return '✗ 连接失败', '无法连接模型接口（已重试）', False
+    return '✗ 连接失败', '无法连接模型接口', False
 
 
 # ---------------------------------------------------------------- 路径与状态
@@ -920,41 +952,32 @@ def cmd_gui():
             label.config(text="探测中…", fg=C["muted"])
             self.app.set_status("正在探测「%s」…" % s["name"], "off")
             results = queue.Queue()
+            headers = self.app.cfg_mod().api_headers(s["api_key"])
 
             def worker():
-                results.put(self._ping(s))
+                try:
+                    results.put(probe_relay(s["base_url"], headers))
+                except Exception:  # noqa: BLE001
+                    results.put(("✗ 探测异常", "探测发生异常，请重启应用后重试", False))
 
             def finish():
                 if not label.winfo_exists():
                     return
                 try:
-                    text, color = results.get_nowait()
+                    text, detail, ok = results.get_nowait()
                 except queue.Empty:
                     self.app.after(50, finish)
                     return
-                label.config(text=text, fg=color)
-                self.app.set_status("「%s」%s" % (s["name"], text))
+                label.config(text=text, fg=C["ok"] if ok else C["danger"])
+                self.app.set_status("「%s」%s" % (s["name"], detail), "ok" if ok else "off")
 
             threading.Thread(target=worker, daemon=True).start()
             self.app.after(50, finish)
 
         def _ping(self, src):
-            base = src["base_url"].rstrip("/")
-            req = urllib.request.Request(
-                base + "/models", headers=self.app.cfg_mod().api_headers(src["api_key"]))
-            t0 = time.time()
-            try:
-                with urllib.request.urlopen(req, timeout=12):
-                    pass
-                return "✓ %dms" % int((time.time() - t0) * 1000), C["ok"]
-            except urllib.error.HTTPError as e:
-                if e.code == 401:
-                    return "✗ 密钥无效", C["danger"]
-                if e.code == 403:
-                    return "✗ 请求被拒绝", C["danger"]
-                return "△ HTTP %d" % e.code, C["warn"]
-            except Exception:  # noqa: BLE001
-                return "✗ 不可达", C["danger"]
+            text, _detail, ok = probe_relay(src["base_url"],
+                                             self.app.cfg_mod().api_headers(src["api_key"]))
+            return text, C["ok"] if ok else C["danger"]
 
         # ---- 模型下拉实时获取（按当前表单 URL/Key 查 /v1/models） ----
         def _fetch_models(self):

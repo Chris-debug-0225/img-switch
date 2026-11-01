@@ -50,6 +50,7 @@ jobs:
       - name: Run isolated tests
         run: |
           python -B app_tests.py
+          python -B test_probe.py
           python -B engine/tests/run_tests.py
           python -B engine/tests/test_user_agent.py
           python -B test_packaged_runtime.py
@@ -94,6 +95,7 @@ jobs:
       - name: Run isolated tests
         run: |
           python3 -B app_tests.py
+          python3 -B test_probe.py
           python3 -B engine/tests/run_tests.py
           python3 -B engine/tests/test_user_agent.py
           python3 -B test_packaged_runtime.py
